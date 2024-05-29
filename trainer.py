@@ -1,127 +1,74 @@
-import random
-from rich.progress import track
-import numpy as np
-
-import torch
+from dataset import get_ds
+from .model import Unet
+from metrics import miou
 from torch import nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from dataset import get_ds
+import torch
+import wandb
+import hashlib
+import json
+import os
 
-
-# from mapping import mapping
+def get_hash(args):
+    args_str = json.dumps(vars(args), sort_keys=True)
+    args_hash = hashlib.md5(args_str.encode('utf-8')).hexdigest()
+    return args_hash
 
 def trainer(args):
+  
+    #set up device
+    if torch.cuda.is_available():
+        device = torch.device("cuda", index=args.idx)
+    else:
+        device = torch.device("cpu")
 
-    # seed setup
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    torch.backends.cudnn.deterministic = True
+    args, train_dl, val_dl, test_dl = get_ds(args)
 
-    # device setup
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index = args.idx)
+    print(f"#TRAIN batch: {len(train_dl)}")
+    print(f"#VAL batch: {len(val_dl)}")
+    print(f"#TEST batch: {len(test_dl)}")
 
-    # folder setup and save setting
-    args.exp_dir = folder_setup(args)
-    save_cfg(args, args.exp_dir)
+    run_name = get_hash(args)
 
-    # dataset setup
-    data, args = get_ds(args)
-    _, _, _, train_dl, valid_dl, _ = data
+    if args.log:
+        run = wandb.init(
+        project='seg',
+        entity='truelove',
+        config=args,
+        name=run_name,
+        force=True
+        )
 
-    # logging setup
-    log_interface = Logging(args)
+    run_dir = os.getcwd() + '/runs'
+    if not os.path.exists(run_dir):
+        os.mkdir(run_dir)
+    
+    sv_dir = run_dir + f"/{run_name}"
+    if not os.path.exists(sv_dir):
+        os.mkdir(sv_dir)
 
-    # task mapping
-    if args.task not in mapping[args.ds]:
-        raise ValueError(f"Currently, task {args.task} is not supported")
-    task_dict = mapping[args.ds][args.task]
+    best_model_path = sv_dir + f'/best.pt'
+    last_model_path = sv_dir + f'/last.pt'
 
-    # metrics
-    metric_dict = task_dict["metrics"]
+    model = Unet(args).to(device)
 
-    # loss
-    train_loss_fn = task_dict["loss"][args.loss](args=args)
-    eval_loss_fn = task_dict["loss"]['vanilla'](args=args)
+    optimizer = Adam(model.parameters(), lr=args.lr)
+    scheduler = CosineAnnealingLR(optimizer, len(train_dl) * args.epochs)
 
-    # model
-    model = task_dict["model"][args.model](args=args).to(device)
-
-    # optimizer, scheduler
-    optimizer = Adam(model.parameters(), lr = 0.001)
-    scheduler = CosineAnnealingLR(optimizer, T_max= len(train_dl)*args.epochs)
-
-    if args.wandb:
-        log_interface.watch(model)
-
-    # training
     old_valid_loss = 1e26
+    
+    for epoch in range(args.epochs):
+        log_dict = {}
 
-    for epoch in track(range(args.epochs)):
-        args.epoch = epoch
-        
-        # train data loader
         model.train()
+        totol_loss = 0 
+        total_iou = 0
         for _, (img, target) in enumerate(train_dl):
             img = img.to(device)
             target = target.to(device)
 
             pred = model(img)
-            loss = train_loss_fn(pred, target)
 
-            log_interface(key="train/loss", value=loss.item())
-
-            for metric_key in metric_dict:
-                metric_value = metric_dict[metric_key](pred, target)
-                log_interface(key=f"train/{metric_key}", value=metric_value)
-            
-            optimizer.zero_grad()
-            if args.loss == 'cag':
-                train_loss_fn.backward(list(model.parameters()))
-            else:
-                loss.backward()
-            optimizer.step()
-            scheduler.step()
-
-        # valid data loader 
-        model.eval()
-        with torch.no_grad():
-            for _, (img, target) in enumerate(valid_dl):
-                img = img.to(device)
-                target = target.to(device)
-
-                pred = model(img)
-                loss = eval_loss_fn(pred, target)
-
-                log_interface(key="valid/loss", value=loss.item())
-
-                for metric_key in metric_dict:
-                    metric_value = metric_dict[metric_key](pred, target)
-                    log_interface(key=f"valid/{metric_key}", value=metric_value)
-        
-        # Logging can averaging
-        log_interface.step(epoch=epoch)
-
-        # save best and last model
-        mean_valid_loss = log_interface.log_avg["valid/loss"]
-        save_dict = {
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': mean_valid_loss
-        }
-        if  mean_valid_loss <= old_valid_loss:
-            old_valid_loss = mean_valid_loss
-
-            save_path = args.exp_dir + f"/best.pt"
-            torch.save(save_dict, save_path)
-        
-        save_path = args.exp_dir + f"/last.pt"
-        torch.save(save_dict, save_path)
-    
-    # save model
-    log_interface.log_model()
+            # loss = 

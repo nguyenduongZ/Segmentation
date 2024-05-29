@@ -1,23 +1,14 @@
-import os, sys
-from typing import *
 import cv2
-from PIL import Image
-from rich.progress import track
-import numpy as np
-import argparse
-
 import torch
 import torchvision
-from torch.utils.data import Dataset, DataLoader, random_split
-from torchvision.datasets import OxfordIIITPet
-import torchvision as tv
-import torch.nn.functional as F
-from torch import Tensor
+import torchvision.datasets
 import albumentations as A
+
+from torch.utils.data import DataLoader, random_split
 
 _root = "/media/mountHDD3/data_storage"
 
-class OxfordIIITPet(OxfordIIITPet):
+class OxfordIIITPet(torchvision.datasets.OxfordIIITPet):
     def __init__(
             self,
             root:str,
