@@ -1,0 +1,79 @@
+wandb_version: 1
+
+ds:
+  desc: null
+  value: oxford
+bs:
+  desc: null
+  value: 32
+wk:
+  desc: null
+  value: 1
+pm:
+  desc: null
+  value: false
+sz:
+  desc: null
+  value: 256
+aug:
+  desc: null
+  value: false
+idx:
+  desc: null
+  value: 0
+seed:
+  desc: null
+  value: 0
+epochs:
+  desc: null
+  value: 100
+model:
+  desc: null
+  value: unet
+loss:
+  desc: null
+  value: ''
+test:
+  desc: null
+  value: false
+wandb:
+  desc: null
+  value: false
+log:
+  desc: null
+  value: true
+init_ch:
+  desc: null
+  value: 32
+seg_n_classes:
+  desc: null
+  value: 3
+lr:
+  desc: null
+  value: 0.001
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.7
+    cli_version: 0.16.0
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1716976135.947526
+    t:
+      1:
+      - 1
+      - 5
+      - 41
+      - 53
+      - 55
+      - 80
+      3:
+      - 13
+      - 16
+      - 23
+      4: 3.10.7
+      5: 0.16.0
+      8:
+      - 5
+      13: linux-x86_64

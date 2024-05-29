@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     # LOGGING
     parser.add_argument('--wandb', action='store_true', help='toggle to use wandb for online saving')
-    parser.add_argument('--log', action='store_true', help='toggle to use tensorboard for offline saving')
+    parser.add_argument('--log', action='store_true', help='wandb logging')
 
     # MODEL
     parser.add_argument('--init_ch', type=int, default=32, help='number of kernel in the first')

@@ -1,1 +1,1 @@
-from .oxford_iii_pet import get_ds
+from .oxford_iii_pet import OxfordIIITPet, get_ds

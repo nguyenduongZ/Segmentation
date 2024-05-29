@@ -32,13 +32,13 @@ class Unet(nn.Module):
 
   def forward(self, x):
     x1 = self.encoder[0](x)
-    x2 = self.encoder[0](x1)
-    x3 = self.encoder[0](x2)
-    x4 = self.encoder[0](x3)
-    x5 = self.encoder[0](x4)
+    x2 = self.encoder[1](x1)
+    x3 = self.encoder[2](x2)
+    x4 = self.encoder[3](x3)
+    x5 = self.encoder[4](x4)
 
     x = self.decoder[0](x5, x4)
-    x = self.decoder[0](x, x3)
-    x = self.decoder[0](x, x2)
-    x = self.decoder[0](x, x1)
+    x = self.decoder[1](x, x3)
+    x = self.decoder[2](x, x2)
+    x = self.decoder[3](x, x1)
     return self.decoder[4](x)
