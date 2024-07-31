@@ -56,3 +56,10 @@ class OutConv(nn.Module):
 
   def forward(self, x):
     return self.conv(x)
+  
+class GlobalAvgPool(nn.Module):
+  def __init__(self):
+    super().__init__()
+
+  def forward(self, x):
+    return x.mean(dim=(2,3))

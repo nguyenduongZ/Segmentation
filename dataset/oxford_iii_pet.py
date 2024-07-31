@@ -8,8 +8,72 @@ import numpy as np
 
 from torch.utils.data import DataLoader, random_split
 from PIL import Image
+from tqdm import tqdm
 
 _root = "/media/mountHDD3/data_storage"
+
+def get_trans_lst():
+    return [
+        A.OneOf([
+            A.GaussNoise(var_limit=(5.0, 10.0)),
+            A.MultiplicativeNoise(),
+            A.RandomRain(),
+        ], p=0.2),
+        A.OneOf([
+            A.MotionBlur(blur_limit=3, p=0.3),
+            A.MedianBlur(blur_limit=3, p=0.3),
+            A.Blur(blur_limit=3, p=0.3),
+        ], p=0.2),
+        A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.12, rotate_limit=15, p=0.5,
+                          border_mode = cv2.BORDER_CONSTANT),
+        A.OneOf([
+            A.OpticalDistortion(p=0.3),
+            A.GridDistortion(p=0.3),
+            A.ElasticTransform(p=0.3),
+        ], p=0.2),
+        A.OneOf([
+            A.CLAHE(clip_limit=2),
+            A.Sharpen(),
+            A.Emboss(),
+            A.RandomBrightnessContrast(),   
+            A.Downscale(interpolation = {
+                "downscale": cv2.INTER_NEAREST,
+                "upscale": cv2.INTER_NEAREST
+            }),
+        ], p=0.3),
+        A.OneOf([
+            A.HueSaturationValue(p=0.3),
+            A.ColorJitter(p=0.3),
+        ], p= 0.3),
+        A.RGBShift(p=0.3),
+        A.RandomShadow(p=0.2)
+    ]
+
+def get_trans_nonnoise_nonblur_lst():
+    return [
+        A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.12, rotate_limit=15, p=0.5,
+                          border_mode = cv2.BORDER_CONSTANT),
+        A.OneOf([
+            A.OpticalDistortion(p=0.3),
+            A.GridDistortion(p=0.3),
+            A.ElasticTransform(p=0.3),
+        ], p=0.2),
+        A.OneOf([
+            A.CLAHE(clip_limit=2),
+            A.Sharpen(),
+            A.Emboss(),
+            A.RandomBrightnessContrast(),   
+            A.Downscale(interpolation = {
+                "downscale": cv2.INTER_NEAREST,
+                "upscale": cv2.INTER_NEAREST
+            }),
+        ], p=0.3),
+        A.OneOf([
+            A.HueSaturationValue(p=0.3),
+            A.ColorJitter(p=0.3),
+        ], p= 0.3),
+        A.RGBShift(p=0.3)
+    ]
 
 class OxfordIIITPet(torchvision.datasets.OxfordIIITPet):
     def __init__(
@@ -19,7 +83,7 @@ class OxfordIIITPet(torchvision.datasets.OxfordIIITPet):
             target_types = "segmetation",
             download = False,
             transform = None,
-            target_transform = None
+            target_transform = None,
     ):
         super().__init__(
             root = _root,
@@ -34,22 +98,52 @@ class OxfordIIITPet(torchvision.datasets.OxfordIIITPet):
 
         self.resize = A.Compose(
             [
-                A.Resize(256, 256),
+                A.Resize(512, 512),
             ]
         )
 
-        self.aug_transforms = A.Compose(
-            [
-                A.HorizontalFlip(p=0.2),
-                A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=3, p=0.5, border_mode = cv2.BORDER_CONSTANT),
-            ]
-        )
+        # self.aug_transforms = A.Compose(
+        #     [
+        #         A.HorizontalFlip(p=0.5),
+        #         A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=3, p=0.5, border_mode = cv2.BORDER_CONSTANT),
+        #     ]
+        # )
+        norm = True 
+        self.aug_transforms = A.Compose(get_trans_lst() if norm else get_trans_nonnoise_nonblur_lst(), p = 0.9)
 
         self.norm = A.Compose(
             [
                 A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
             ]
         )
+
+        self._images_folder = self.root + "/oxford-iiit-pet/images"
+        self._anns_folder = self.root + "/oxford-iiit-pet/annotations"
+        self._segs_folder = self._anns_folder + "/trimaps"
+
+        print("Data Set Setting Up")
+        image_ids = []
+        self._labels = []
+        with open(self._anns_folder + f"/{self._split}.txt") as file:
+            for line in tqdm(file):
+                image_id, label, *_ = line.strip().split()
+                image_ids.append(image_id)
+                self._labels.append(int(label) - 1)
+
+        self.classes = [
+            " ".join(part.title() for part in raw_cls.split("_"))
+            for raw_cls, _ in tqdm(
+                    sorted(
+                    {(image_id.rsplit("_", 1)[0], label) for image_id, label in zip(image_ids, self._labels)},
+                    key=lambda image_id_and_label: image_id_and_label[1],
+                )
+            )
+        ]
+        self.class_to_idx = dict(zip(self.classes, range(len(self.classes))))
+
+        self._images = [self._images_folder + f"/{image_id}.jpg" for image_id in tqdm(image_ids)]
+        self._segs = [self._segs_folder + f"/{image_id}.png" for image_id in tqdm(image_ids)]
+        print("Done")
 
     @staticmethod
     def process_mask(x):
@@ -87,9 +181,12 @@ class OxfordIIITPet(torchvision.datasets.OxfordIIITPet):
         torch_img = torch.from_numpy(transformed_img).permute(-1, 0, 1).float()
         torch_mask = torch.from_numpy(transformed_msk).unsqueeze(-1).permute(-1, 0, 1).float()
 
-        # print(torch_mask.shape())
+        target = {
+            "semantic" : self.process_mask(torch_mask),
+            "category" : self._labels[idx],
+        }
 
-        return torch_img, self.process_mask(torch_mask)
+        return torch_img, target
 
     @property
     def mode(self):
@@ -101,21 +198,6 @@ class OxfordIIITPet(torchvision.datasets.OxfordIIITPet):
             raise ValueError(f"mode cannot be {m} and must be ['train', 'test']")
         else:
             self.__mode = m
-# transform = A.Compose(
-#     [
-#         A.Resize(256, 256),
-#         A.HorizontalFlip(p=0.2),
-#         A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=3, p=0.5, border_mode=cv2.BORDER_CONSTANT),
-#         A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-#     ]
-# )
-
-# target_transform = A.Compose(
-#     [
-#         A.Resize(256, 256),
-#         A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-#     ]
-# )
 
 def get_ds(args):
     train_data = OxfordIIITPet(
